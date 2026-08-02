@@ -15,7 +15,6 @@ Reusable utility functions for CNN training.
 # IMPORTS
 # =========================================================
 
-import os
 import random
 import numpy as np
 import torch
@@ -25,7 +24,8 @@ from pathlib import Path
 from modules.cnn.config import (
     SEED,
     BEST_MODEL,
-    LAST_MODEL
+    LAST_MODEL,
+    DEVICE
 )
 
 # =========================================================
@@ -40,7 +40,9 @@ def set_seed():
 
     torch.manual_seed(SEED)
 
-    torch.cuda.manual_seed_all(SEED)
+    if torch.cuda.is_available():
+
+        torch.cuda.manual_seed_all(SEED)
 
     torch.backends.cudnn.deterministic = True
 
@@ -88,7 +90,7 @@ def load_model(model, optimizer=None, filepath=BEST_MODEL):
 
         filepath,
 
-        map_location="cpu"
+        map_location=DEVICE
 
     )
 
@@ -195,13 +197,22 @@ def print_model_info(model):
 
 def calculate_accuracy(outputs, labels):
 
-    _, predicted = torch.max(outputs, 1)
+    predicted = outputs.argmax(dim = 1)
 
     correct = (predicted == labels).sum().item()
 
     accuracy = correct / labels.size(0)
 
     return accuracy
+
+
+# =========================================================
+# GET LEARNING RATE
+# =========================================================
+
+def get_learning_rate(optimizer):
+
+    return optimizer.param_groups[0]["lr"]
 
 
 # =========================================================

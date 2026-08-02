@@ -97,9 +97,11 @@ LEARNING_RATE = 1e-4
 
 WEIGHT_DECAY = 1e-4
 
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 
 PIN_MEMORY = True
+
+SAVE_EVERY = 1
 
 # =========================================================
 # DEVICE
@@ -111,6 +113,10 @@ DEVICE = torch.device(
 
     if torch.cuda.is_available()
 
+    else "mps"
+
+    if torch.backends.mps.is_available()
+
     else "cpu"
 
 )
@@ -121,11 +127,28 @@ DEVICE = torch.device(
 
 SEED = 42
 
+
+# =========================================================
+# SET RANDOM SEED
+# =========================================================
+
+def set_seed():
+
+    import random
+
+    random.seed(SEED)
+
+    torch.manual_seed(SEED)
+
+    if torch.cuda.is_available():
+
+        torch.cuda.manual_seed_all(SEED)
+
 # =========================================================
 # EARLY STOPPING
 # =========================================================
 
-PATIENCE = 5
+
 
 # =========================================================
 # MODEL

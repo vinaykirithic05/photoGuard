@@ -1,12 +1,22 @@
 """
 =========================================================
 PhotoGuard AI
-CNN Training Script
+CNN Training Engine
 
-Author : Vinay
+Author : Vinay Kirithic
 
 Description:
-Main training script for EfficientNet-B0.
+Main training script.
+
+Responsibilities
+
+1. Load Dataset
+2. Build CNN
+3. Configure Optimizer
+4. Configure Scheduler
+5. Resume Training
+6. Save Best Model
+7. Save Checkpoints
 
 =========================================================
 """
@@ -15,100 +25,113 @@ Main training script for EfficientNet-B0.
 # IMPORTS
 # =========================================================
 
-import time
+import json
+from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
 from modules.cnn.config import (
     DEVICE,
-    EPOCHS,
     LEARNING_RATE,
+    EPOCHS,
     WEIGHT_DECAY,
-    BEST_MODEL,
-    LAST_MODEL,
-)
-
-from modules.cnn.dataset import get_dataloaders
-
-from modules.cnn.model import build_model
-
-from modules.cnn.trainer import (
-    train_one_epoch,
-    validate_one_epoch,
+    EARLY_STOPPING_PATIENCE,
 )
 
 from modules.cnn.utils import (
     set_seed,
-    freeze_backbone,
-    unfreeze_backbone,
-    save_model,
-    print_model_info,
+    get_learning_rate
+)
+
+
+from modules.cnn.dataset import (
+    get_dataloaders
+)
+
+from modules.cnn.model import (
+    CNNModel
+)
+
+from modules.cnn.trainer import (
+    train_one_epoch,
+    validate_one_epoch
 )
 
 
 # =========================================================
-# TRAIN FUNCTION
+# PROJECT PATHS
 # =========================================================
 
-def train():
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-    print("=" * 70)
-    print("PhotoGuard AI")
-    print("CNN Training")
-    print("=" * 70)
+WEIGHTS_DIR = BASE_DIR / "weights"
 
-    # ------------------------------------
-    # Random Seed
-    # ------------------------------------
+CHECKPOINT_DIR = BASE_DIR / "checkpoints"
 
-    set_seed()
+HISTORY_DIR = BASE_DIR / "history"
 
-    # ------------------------------------
-    # Dataset
-    # ------------------------------------
+BEST_MODEL = WEIGHTS_DIR / "best_model.pth"
 
-    print("\nLoading Dataset...\n")
+LAST_CHECKPOINT = CHECKPOINT_DIR / "last_checkpoint.pth"
 
-    train_loader, validation_loader, _ = get_dataloaders()
+HISTORY_FILE = HISTORY_DIR / "history.json"
 
-    print("Dataset Loaded Successfully")
 
-    # ------------------------------------
-    # Model
-    # ------------------------------------
+# =========================================================
+# CREATE PROJECT FOLDERS
+# =========================================================
 
-    print("\nBuilding Model...\n")
+def create_directories():
 
-    model = build_model()
+    WEIGHTS_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    print_model_info(model)
+    CHECKPOINT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    # ------------------------------------
-    # Freeze Backbone
-    # ------------------------------------
+    HISTORY_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    freeze_backbone(model)
 
-    # ------------------------------------
-    # Loss Function
-    # ------------------------------------
+# =========================================================
+# CREATE MODEL
+# =========================================================
 
-    criterion = nn.CrossEntropyLoss()
+def build_model():
 
-    # ------------------------------------
-    # Optimizer
-    # ------------------------------------
+    model = CNNModel()
 
-    optimizer = optim.Adam(
+    model = model.to(DEVICE)
 
-        filter(
-            lambda p: p.requires_grad,
-            model.parameters()
-        ),
+    return model
+
+
+# =========================================================
+# LOSS FUNCTION
+# =========================================================
+
+def build_loss():
+
+    return nn.CrossEntropyLoss()
+
+
+# =========================================================
+# OPTIMIZER
+# =========================================================
+
+def build_optimizer(model):
+
+    optimizer = optim.AdamW(
+
+        model.parameters(),
 
         lr=LEARNING_RATE,
 
@@ -116,11 +139,16 @@ def train():
 
     )
 
-    # ------------------------------------
-    # Scheduler
-    # ------------------------------------
+    return optimizer
 
-    scheduler = ReduceLROnPlateau(
+
+# =========================================================
+# LR SCHEDULER
+# =========================================================
+
+def build_scheduler(optimizer):
+
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
 
         optimizer,
 
@@ -128,179 +156,349 @@ def train():
 
         factor=0.5,
 
-        patience=2
+        patience=3
 
     )
 
-    # ------------------------------------
-    # Variables
-    # ------------------------------------
+    return scheduler
+
+
+# =========================================================
+# LOAD CHECKPOINT
+# =========================================================
+
+def load_checkpoint(model, optimizer):
+
+    start_epoch = 1
 
     best_accuracy = 0.0
 
-    start_time = time.time()
+    if LAST_CHECKPOINT.exists():
 
-    # ------------------------------------
+        print("\nLoading Previous Checkpoint...\n")
+
+        checkpoint = torch.load(
+
+            LAST_CHECKPOINT,
+
+            map_location=DEVICE
+
+        )
+
+        model.load_state_dict(
+
+            checkpoint["model_state_dict"]
+
+        )
+
+        optimizer.load_state_dict(
+
+            checkpoint["optimizer_state_dict"]
+
+        )
+
+        start_epoch = checkpoint["epoch"] + 1
+
+        best_accuracy = checkpoint["best_accuracy"]
+
+        print(
+
+            f"Resuming From Epoch {start_epoch}"
+
+        )
+
+    return (
+
+        model,
+
+        optimizer,
+
+        start_epoch,
+
+        best_accuracy
+
+    )
+# =========================================================
+# TRAIN MODEL
+# =========================================================
+
+def train_model():
+
+    create_directories()
+
+    print("\n" + "=" * 70)
+    print("             PhotoGuard AI - CNN Training")
+    print("=" * 70)
+
+    # -----------------------------------------------------
+    # DataLoaders
+    # -----------------------------------------------------
+
+    train_loader, validation_loader, _ = get_dataloaders()
+
+    # -----------------------------------------------------
+    # Model
+    # -----------------------------------------------------
+
+    model = build_model()
+
+    # -----------------------------------------------------
+    # Loss
+    # -----------------------------------------------------
+
+    criterion = build_loss()
+
+    # -----------------------------------------------------
+    # Optimizer
+    # -----------------------------------------------------
+
+    optimizer = build_optimizer(model)
+
+    # -----------------------------------------------------
+    # Scheduler
+    # -----------------------------------------------------
+
+    scheduler = build_scheduler(optimizer)
+
+    # -----------------------------------------------------
+    # Resume Checkpoint
+    # -----------------------------------------------------
+
+    model, optimizer, start_epoch, best_accuracy = load_checkpoint(
+
+        model,
+        optimizer
+
+    )
+
+    # -----------------------------------------------------
+    # Training History
+    # -----------------------------------------------------
+
+    history = {
+
+        "train_loss": [],
+        "train_accuracy": [],
+        "validation_loss": [],
+        "validation_accuracy": []
+
+    }
+
+    patience = 0
+
+    EARLY_STOPPING = EARLY_STOPPING_PATIENCE
+
+    # -----------------------------------------------------
     # Epoch Loop
-    # ------------------------------------
+    # -----------------------------------------------------
 
-    for epoch in range(EPOCHS):
+    for epoch in range(start_epoch, EPOCHS + 1):
 
-        print("\n")
+        print("\n" + "=" * 70)
 
-        print("=" * 70)
-
-        print(f"Epoch {epoch + 1}/{EPOCHS}")
+        print(f"Epoch {epoch}/{EPOCHS}")
 
         print("=" * 70)
 
-        # --------------------------------
-        # Training
-        # --------------------------------
+        # -------------------------------------------------
+        # Train
+        # -------------------------------------------------
 
         train_loss, train_accuracy = train_one_epoch(
 
             model,
-
             train_loader,
-
             criterion,
-
             optimizer
 
         )
 
-        # --------------------------------
+        # -------------------------------------------------
         # Validation
-        # --------------------------------
+        # -------------------------------------------------
 
         validation_loss, validation_accuracy = validate_one_epoch(
 
             model,
-
             validation_loader,
-
             criterion
 
         )
-                # --------------------------------
-        # Update Scheduler
-        # --------------------------------
 
-        scheduler.step(validation_accuracy)
+        # -------------------------------------------------
+        # Scheduler
+        # -------------------------------------------------
 
-        # --------------------------------
-        # Print Metrics
-        # --------------------------------
+        scheduler.step(
 
-        print("\nTraining Results")
+            validation_accuracy
 
-        print(f"Train Loss         : {train_loss:.4f}")
-        print(f"Train Accuracy     : {train_accuracy*100:.2f}%")
+        )
+
+        # -------------------------------------------------
+        # Save History
+        # -------------------------------------------------
+
+        history["train_loss"].append(
+
+            train_loss
+
+        )
+
+        history["train_accuracy"].append(
+
+            train_accuracy
+
+        )
+
+        history["validation_loss"].append(
+
+            validation_loss
+
+        )
+
+        history["validation_accuracy"].append(
+
+            validation_accuracy
+
+        )
+
+        # -------------------------------------------------
+        # Print Results
+        # -------------------------------------------------
 
         print()
 
-        print("Validation Results")
+        print(f"Train Loss        : {train_loss:.4f}")
 
-        print(f"Validation Loss    : {validation_loss:.4f}")
-        print(f"Validation Accuracy: {validation_accuracy*100:.2f}%")
+        print(f"Train Accuracy    : {train_accuracy*100:.2f}%")
 
-        current_lr = optimizer.param_groups[0]["lr"]
+        print(f"Validation Loss   : {validation_loss:.4f}")
 
-        print(f"Learning Rate      : {current_lr:.6f}")
+        print(f"Validation Acc    : {validation_accuracy*100:.2f}%")
 
-        # --------------------------------
+        print(
+
+            f"Learning Rate     : "
+
+            f"{optimizer.param_groups(optimizer):.7f}"
+
+        )
+
+        # -------------------------------------------------
         # Save Best Model
-        # --------------------------------
+        # -------------------------------------------------
 
         if validation_accuracy > best_accuracy:
 
             best_accuracy = validation_accuracy
 
-            save_model(
-                model=model,
-                optimizer=optimizer,
-                epoch=epoch + 1,
-                accuracy=validation_accuracy,
-                filepath=BEST_MODEL
+            torch.save(
+
+                model.state_dict(),
+
+                BEST_MODEL
+
             )
 
-            print("\n✅ Best Model Updated")
+            print("\n✓ Best Model Saved")
 
-        # --------------------------------
-        # Save Last Model
-        # --------------------------------
+            patience = 0
 
-        save_model(
-            model=model,
-            optimizer=optimizer,
-            epoch=epoch + 1,
-            accuracy=validation_accuracy,
-            filepath=LAST_MODEL
+        else:
+
+            patience += 1
+
+        # -------------------------------------------------
+        # Save Checkpoint
+        # -------------------------------------------------
+
+        checkpoint = {
+
+            "epoch": epoch,
+
+            "model_state_dict": model.state_dict(),
+
+            "optimizer_state_dict": optimizer.state_dict(),
+
+            "best_accuracy": best_accuracy
+
+        }
+
+        torch.save(
+
+            checkpoint,
+
+            LAST_CHECKPOINT
+
         )
 
-        # --------------------------------
-        # Fine Tuning
-        # --------------------------------
+        # -------------------------------------------------
+        # Early Stopping
+        # -------------------------------------------------
 
-        if epoch == 4:
+        if patience >= EARLY_STOPPING:
 
-            print("\n")
-            print("=" * 70)
-            print("Fine Tuning Started")
-            print("=" * 70)
+            print("\nEarly Stopping Triggered.")
 
-            unfreeze_backbone(model)
+            break
 
-            optimizer = optim.Adam(
+    # -----------------------------------------------------
+    # Save History
+    # -----------------------------------------------------
 
-                model.parameters(),
+    with open(
 
-                lr=LEARNING_RATE / 10,
+        HISTORY_FILE,
 
-                weight_decay=WEIGHT_DECAY
+        "w",
 
-            )
+        encoding="utf-8"
 
-            scheduler = ReduceLROnPlateau(
+    ) as file:
 
-                optimizer,
+        json.dump(
 
-                mode="max",
+            history,
 
-                factor=0.5,
+            file,
 
-                patience=2
+            indent=4
 
-            )
+        )
 
-    # =====================================================
-    # Training Completed
-    # =====================================================
-
-    end_time = time.time()
-
-    total_time = end_time - start_time
-
-    hours = int(total_time // 3600)
-
-    minutes = int((total_time % 3600) // 60)
-
-    seconds = int(total_time % 60)
-
-    print("\n")
-    print("=" * 70)
+    print("\n" + "=" * 70)
 
     print("Training Completed Successfully")
 
-    print("=" * 70)
-
     print(f"Best Validation Accuracy : {best_accuracy*100:.2f}%")
 
-    print(
-        f"Training Time            : "
-        f"{hours}h {minutes}m {seconds}s"
-    )
+    print("=" * 70)
+
+    # =========================================================
+# PRINT TRAINING SUMMARY
+# =========================================================
+
+def print_training_summary():
+
+    print("\n")
+    print("=" * 70)
+    print("              PhotoGuard AI - Training Summary")
+    print("=" * 70)
+
+    print(f"\nBest Model")
+
+    print(f"{BEST_MODEL}")
+
+    print(f"\nCheckpoint")
+
+    print(f"{LAST_CHECKPOINT}")
+
+    print(f"\nTraining History")
+
+    print(f"{HISTORY_FILE}")
+
+    print("\nModel Training Finished Successfully.")
 
     print("=" * 70)
 
@@ -311,11 +509,22 @@ def train():
 
 def main():
 
-    train()
+    print("\n")
+    print("=" * 70)
+    print("            PhotoGuard AI - CNN Training Engine")
+    print("=" * 70)
+
+    print(f"\nDevice : {DEVICE}")
+
+    set_seed()
+
+    train_model()
+
+    print_training_summary()
 
 
 # =========================================================
-# RUN
+# ENTRY POINT
 # =========================================================
 
 if __name__ == "__main__":

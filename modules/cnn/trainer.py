@@ -46,8 +46,8 @@ def train_one_epoch(
 
     for images, labels in progress_bar:
 
-        images = images.to(DEVICE)
-        labels = labels.to(DEVICE)
+        labels = labels.to(DEVICE , non_blocking = True)
+        images = images.to(DEVICE , non_blocking = True)
 
         # -------------------------------
         # Clear Previous Gradients
@@ -69,13 +69,21 @@ def train_one_epoch(
 
         loss.backward()
 
+        torch.nn.utils.clip_grad_norm_(
+
+        model.parameters(),
+
+         max_norm=1.0
+
+)
+
         optimizer.step()
 
         # -------------------------------
         # Calculate Accuracy
         # -------------------------------
 
-        _, predicted = torch.max(outputs, 1)
+        predicted = outputs.argmax(dim=1)
 
         correct = (predicted == labels).sum().item()
 
@@ -146,15 +154,21 @@ def validate_one_epoch(
             # Forward Pass
             # ---------------------------------
 
-            outputs = model(images)
+            with torch.autocast(
 
-            loss = criterion(outputs, labels)
+                device_type=DEVICE.type,
 
+                enabled=False
+            ):
+
+                outputs = model(images)
+
+                loss = criterion(outputs, labels)
             # ---------------------------------
             # Accuracy
             # ---------------------------------
 
-            _, predicted = torch.max(outputs, 1)
+            predicted = outputs.argmax(dim=1)
 
             correct = (predicted == labels).sum().item()
 
@@ -176,9 +190,11 @@ def validate_one_epoch(
 
             progress_bar.set_postfix({
 
-                "Val Loss": f"{loss_meter.avg:.4f}",
+             "Loss": f"{loss_meter.avg:.4f}",
 
-                "Val Acc": f"{accuracy_meter.avg*100:.2f}%"
+             "Accuracy": f"{accuracy_meter.avg*100:.2f}%",
+
+             "LR": optimizer.param_groups[0]["lr"]
 
             })
 
