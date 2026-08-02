@@ -7,10 +7,11 @@ Author : Vinay Kirithic
 
 Description:
 Centralizes all directory paths across local workspace and Google Colab environments.
-Dynamically resolves paths by checking actual filesystem contents.
+Specifically handles Google Drive dataset mounting paths for Colab.
 ============================================================
 """
 
+import os
 from pathlib import Path
 
 # ==========================================================
@@ -21,33 +22,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ==========================================================
 # ENVIRONMENT & DATASET DIRECTORIES
 # ==========================================================
-COLAB_DRIVE_BASE = Path("/content/drive/MyDrive")
+# Check if running inside Google Colab with mounted Drive
+COLAB_DRIVE_DATASET = Path("/content/drive/MyDrive/PhotoGuard/datasets")
 LOCAL_DATASET = BASE_DIR / "datasets"
 
-DATASET_DIR = LOCAL_DATASET
-
-# Search for PhotoGuard dataset folder dynamically inside Google Drive
-if COLAB_DRIVE_BASE.exists():
-    for item in COLAB_DRIVE_BASE.iterdir():
-        if item.is_dir() and item.name.lower() == "photoguard":
-            datasets_candidate = item / "datasets"
-            if not datasets_candidate.exists():
-                datasets_candidate = item / "Datasets"
-            if datasets_candidate.exists():
-                DATASET_DIR = datasets_candidate
+if COLAB_DRIVE_DATASET.exists():
+    DATASET_DIR = COLAB_DRIVE_DATASET
+elif Path("/content/drive/MyDrive").exists():
+    # Search drive dynamically if path casing differs
+    drive_base = Path("/content/drive/MyDrive")
+    matched = None
+    for folder in drive_base.iterdir():
+        if folder.is_dir() and folder.name.lower() == "photoguard":
+            datasets_sub = folder / "datasets"
+            if datasets_sub.exists():
+                matched = datasets_sub
                 break
-            elif item.exists():
-                # Fallback to project root if datasets subfolder isn't explicit
-                DATASET_DIR = item
+    DATASET_DIR = matched if matched else LOCAL_DATASET
+else:
+    DATASET_DIR = LOCAL_DATASET
 
-# Resolve raw directory dynamically
+# Raw and preprocessed dataset folders
 RAW_DIR = DATASET_DIR / "raw"
-if not RAW_DIR.exists():
-    for child in DATASET_DIR.iterdir() if DATASET_DIR.exists() else []:
-        if child.is_dir() and child.name.lower() == "raw":
-            RAW_DIR = child
-            break
-
 PREPROCESSED_DIR = DATASET_DIR / "preprocessed"
 BALANCED_DIR = DATASET_DIR / "balanced"
 
@@ -73,7 +69,7 @@ METRICS_DIR = OUTPUT_DIR / "metrics"
 # AUTOMATIC DIRECTORY CREATION
 # ==========================================================
 def ensure_directories_exist():
-    """Ensures all essential project directories exist."""
+    """Ensures output directories exist without overwriting raw dataset."""
     directories = [
         PREPROCESSED_DIR,
         BALANCED_DIR,
@@ -101,6 +97,7 @@ if __name__ == "__main__":
     print(f"Base Directory       : {BASE_DIR}")
     print(f"Dataset Directory    : {DATASET_DIR}")
     print(f"Raw Images Directory : {RAW_DIR}")
+    print(f"RAW_DIR Exists?      : {RAW_DIR.exists()}")
     print(f"Preprocessed Dir     : {PREPROCESSED_DIR}")
     print(f"Metadata Directory   : {METADATA_DIR}")
     print(f"Models Directory     : {MODELS_DIR}")
