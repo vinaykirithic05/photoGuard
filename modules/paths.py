@@ -7,7 +7,7 @@ Author : Vinay Kirithic
 
 Description:
 Centralizes all directory paths across local workspace and Google Colab environments.
-Supports fallback directory paths for Google Drive case-sensitivity.
+Dynamically resolves paths by checking actual filesystem contents.
 ============================================================
 """
 
@@ -21,27 +21,32 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ==========================================================
 # ENVIRONMENT & DATASET DIRECTORIES
 # ==========================================================
-# Possible Google Drive dataset paths (handling case sensitivity and capitalization)
-COLAB_DATASET_PATHS = [
-    Path("/content/drive/MyDrive/PhotoGuard/datasets"),
-    Path("/content/drive/MyDrive/PhotoGuard/Datasets"),
-    Path("/content/drive/MyDrive/photoguard/datasets"),
-    Path("/content/drive/MyDrive/photoGuard/datasets"),
-]
-
+COLAB_DRIVE_BASE = Path("/content/drive/MyDrive")
 LOCAL_DATASET = BASE_DIR / "datasets"
 
-# Automatically resolve path depending on environment (Colab vs Local)
 DATASET_DIR = LOCAL_DATASET
-for colab_path in COLAB_DATASET_PATHS:
-    if colab_path.exists():
-        DATASET_DIR = colab_path
-        break
 
-# Raw and preprocessed dataset folders
+# Search for PhotoGuard dataset folder dynamically inside Google Drive
+if COLAB_DRIVE_BASE.exists():
+    for item in COLAB_DRIVE_BASE.iterdir():
+        if item.is_dir() and item.name.lower() == "photoguard":
+            datasets_candidate = item / "datasets"
+            if not datasets_candidate.exists():
+                datasets_candidate = item / "Datasets"
+            if datasets_candidate.exists():
+                DATASET_DIR = datasets_candidate
+                break
+            elif item.exists():
+                # Fallback to project root if datasets subfolder isn't explicit
+                DATASET_DIR = item
+
+# Resolve raw directory dynamically
 RAW_DIR = DATASET_DIR / "raw"
-if not RAW_DIR.exists() and (DATASET_DIR / "Raw").exists():
-    RAW_DIR = DATASET_DIR / "Raw"
+if not RAW_DIR.exists():
+    for child in DATASET_DIR.iterdir() if DATASET_DIR.exists() else []:
+        if child.is_dir() and child.name.lower() == "raw":
+            RAW_DIR = child
+            break
 
 PREPROCESSED_DIR = DATASET_DIR / "preprocessed"
 BALANCED_DIR = DATASET_DIR / "balanced"
@@ -70,7 +75,6 @@ METRICS_DIR = OUTPUT_DIR / "metrics"
 def ensure_directories_exist():
     """Ensures all essential project directories exist."""
     directories = [
-        RAW_DIR,
         PREPROCESSED_DIR,
         BALANCED_DIR,
         TRAIN_DIR,
@@ -102,4 +106,3 @@ if __name__ == "__main__":
     print(f"Models Directory     : {MODELS_DIR}")
     print(f"Outputs Directory    : {OUTPUT_DIR}")
     print("=" * 60)
-    print("All project directories verified successfully!")
