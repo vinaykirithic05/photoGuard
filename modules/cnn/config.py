@@ -21,7 +21,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # DATASET PATHS
 # =========================================================
 
-DATASET_DIR = BASE_DIR / "datasets"
+COLAB_DATASET = Path("/content/drive/MyDrive/PhotoGuard/datasets")
+
+LOCAL_DATASET = BASE_DIR / "datasets"
+
+if COLAB_DATASET.exists():
+
+    DATASET_DIR = COLAB_DATASET
+
+else:
+
+    DATASET_DIR = LOCAL_DATASET
+
 
 TRAIN_DIR = DATASET_DIR / "train"
 
