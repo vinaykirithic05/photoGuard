@@ -51,7 +51,7 @@ from modules.cnn.dataset import (
 )
 
 from modules.cnn.model import (
-    CNNModel
+    build_model
 )
 
 from modules.cnn.trainer import (
@@ -77,8 +77,6 @@ BEST_MODEL = WEIGHTS_DIR / "best_model.pth"
 LAST_CHECKPOINT = CHECKPOINT_DIR / "last_checkpoint.pth"
 
 HISTORY_FILE = HISTORY_DIR / "history.json"
-
-
 # =========================================================
 # CREATE PROJECT FOLDERS
 # =========================================================
@@ -105,9 +103,9 @@ def create_directories():
 # CREATE MODEL
 # =========================================================
 
-def build_model():
+def create_model():
 
-    model = CNNModel()
+    model = build_model()
 
     model = model.to(DEVICE)
 
@@ -240,7 +238,7 @@ def train_model():
     # Model
     # -----------------------------------------------------
 
-    model = build_model()
+    model = create_model()
 
     # -----------------------------------------------------
     # Loss
@@ -381,7 +379,7 @@ def train_model():
 
             f"Learning Rate     : "
 
-            f"{optimizer.param_groups(optimizer):.7f}"
+            f"{get_learning_rate(optimizer):.7f}"
 
         )
 
