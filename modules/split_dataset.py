@@ -1,28 +1,68 @@
-from pathlib import Path
-from sklearn.model_selection import train_test_split
-from tqdm import tqdm
-import pandas as pd
-import shutil
-import random
+"""
+============================================================
+PhotoGuard AI
+Dataset Split Module
 
-# =====================================================
+Author : Vinay Kirithic
+
+Description:
+Splits the preprocessed dataset into
+
+1. Train
+2. Validation
+3. Test
+
+Split Ratio
+
+Train       : 70%
+Validation  : 15%
+Test        : 15%
+
+============================================================
+"""
+
+# ==========================================================
+# IMPORTS
+# ==========================================================
+
+import random
+import shutil
+
+from pathlib import Path
+
+from tqdm import tqdm
+
+
+# ==========================================================
 # CONFIGURATION
-# =====================================================
+# ==========================================================
+
+TRAIN_RATIO = 0.70
+VALIDATION_RATIO = 0.15
+TEST_RATIO = 0.15
+
+RANDOM_SEED = 42
+
+random.seed(RANDOM_SEED)
+
+
+# ==========================================================
+# PROJECT PATHS
+# ==========================================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 INPUT_DIR = BASE_DIR / "datasets" / "preprocessed"
 
 TRAIN_DIR = BASE_DIR / "datasets" / "train"
-VAL_DIR = BASE_DIR / "datasets" / "validation"
+
+VALIDATION_DIR = BASE_DIR / "datasets" / "validation"
+
 TEST_DIR = BASE_DIR / "datasets" / "test"
 
-METADATA_DIR = BASE_DIR / "metadata"
-METADATA_DIR.mkdir(exist_ok=True)
-
-SUMMARY_FILE = METADATA_DIR / "split_summary.csv"
 
 SUPPORTED_EXTENSIONS = {
+
     ".jpg",
     ".jpeg",
     ".png",
@@ -30,106 +70,237 @@ SUPPORTED_EXTENSIONS = {
     ".tif",
     ".tiff",
     ".webp"
+
 }
 
-RANDOM_STATE = 42
+# ==========================================================
+# CREATE OUTPUT FOLDERS
+# ==========================================================
 
-summary = []
+def create_output_folders():
 
-# =====================================================
-# COPY FUNCTION
-# =====================================================
+    # Remove old folders
 
-def copy_images(image_list, destination_root, label):
+    if TRAIN_DIR.exists():
+        shutil.rmtree(TRAIN_DIR)
 
-    destination = destination_root / label
-    destination.mkdir(parents=True, exist_ok=True)
+    if VALIDATION_DIR.exists():
+        shutil.rmtree(VALIDATION_DIR)
 
-    for image in tqdm(image_list, desc=f"Copying {label} -> {destination_root.name}"):
+    if TEST_DIR.exists():
+        shutil.rmtree(TEST_DIR)
+
+    # Create fresh folders
+
+    TRAIN_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    VALIDATION_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    TEST_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    print("\nOld dataset split removed.")
+
+    print("New folders created successfully.\n")
+
+
+# ==========================================================
+# GET ALL CLASS FOLDERS
+# ==========================================================
+
+def get_class_folders():
+
+    folders = []
+
+    for folder in INPUT_DIR.rglob("*"):
+
+        if folder.is_dir():
+
+            images = [
+
+                file
+
+                for file in folder.iterdir()
+
+                if file.suffix.lower() in SUPPORTED_EXTENSIONS
+
+            ]
+
+            if len(images) > 0:
+
+                folders.append(folder)
+
+    return folders
+
+
+# ==========================================================
+# COPY IMAGES
+# ==========================================================
+
+def copy_images(images, destination):
+
+    destination.mkdir(
+
+        parents=True,
+
+        exist_ok=True
+
+    )
+
+    for image in images:
 
         shutil.copy2(
+
             image,
+
             destination / image.name
+
+        )
+# ==========================================================
+# SPLIT DATASET
+# ==========================================================
+
+def split_dataset():
+
+    create_output_folders()
+
+    folders = get_class_folders()
+
+    print("\n")
+    print("=" * 60)
+    print("PhotoGuard AI - Dataset Splitting")
+    print("=" * 60)
+
+    total_train = 0
+    total_validation = 0
+    total_test = 0
+
+    for folder in folders:
+
+        relative_folder = folder.relative_to(INPUT_DIR)
+
+        images = [
+
+            file
+
+            for file in folder.iterdir()
+
+            if file.suffix.lower() in SUPPORTED_EXTENSIONS
+
+        ]
+
+        random.shuffle(images)
+
+        total_images = len(images)
+
+        train_count = int(total_images * TRAIN_RATIO)
+
+        validation_count = int(total_images * VALIDATION_RATIO)
+
+        train_images = images[:train_count]
+
+        validation_images = images[
+            train_count:
+            train_count + validation_count
+        ]
+
+        test_images = images[
+            train_count + validation_count:
+        ]
+
+        copy_images(
+
+            train_images,
+
+            TRAIN_DIR / relative_folder
+
         )
 
-# =====================================================
-# PROCESS LABEL
-# =====================================================
+        copy_images(
 
-def process_label(label):
+            validation_images,
 
-    folder = INPUT_DIR / label
+            VALIDATION_DIR / relative_folder
 
-    images = []
+        )
 
-    for ext in SUPPORTED_EXTENSIONS:
-        images.extend(folder.rglob(f"*{ext}"))
+        copy_images(
 
-    random.shuffle(images)
+            test_images,
 
-    train_imgs, temp_imgs = train_test_split(
-        images,
-        test_size=0.30,
-        random_state=RANDOM_STATE
-    )
+            TEST_DIR / relative_folder
 
-    val_imgs, test_imgs = train_test_split(
-        temp_imgs,
-        test_size=0.50,
-        random_state=RANDOM_STATE
-    )
+        )
 
-    copy_images(train_imgs, TRAIN_DIR, label)
-    copy_images(val_imgs, VAL_DIR, label)
-    copy_images(test_imgs, TEST_DIR, label)
+        total_train += len(train_images)
 
-    summary.append({
+        total_validation += len(validation_images)
 
-        "label": label,
+        total_test += len(test_images)
 
-        "total": len(images),
+        print()
 
-        "train": len(train_imgs),
+        print(f"{relative_folder}")
 
-        "validation": len(val_imgs),
+        print(f"Total Images : {total_images}")
 
-        "test": len(test_imgs)
+        print(f"Train        : {len(train_images)}")
 
-    })
+        print(f"Validation   : {len(validation_images)}")
 
-# =====================================================
+        print(f"Test         : {len(test_images)}")
+
+    print("\n")
+    print("=" * 60)
+
+    print("Overall Summary")
+
+    print("=" * 60)
+
+    print(f"Train Images      : {total_train}")
+
+    print(f"Validation Images : {total_validation}")
+
+    print(f"Test Images       : {total_test}")
+
+    print()
+
+    print("Dataset Split Completed Successfully.")
+
+    print("=" * 60)
+
+
+# ==========================================================
 # MAIN
-# =====================================================
+# ==========================================================
 
 def main():
 
-    print("\n")
-    print("="*60)
-    print("      PhotoGuard AI - Dataset Split")
-    print("="*60)
-
     if not INPUT_DIR.exists():
 
+        print()
+
         print("Preprocessed dataset not found.")
+
+        print(INPUT_DIR)
+
         return
 
-    process_label("real")
-    process_label("ai")
+    split_dataset()
 
-    df = pd.DataFrame(summary)
 
-    df.to_csv(SUMMARY_FILE, index=False)
-
-    print("\n")
-    print("="*60)
-    print("Dataset Split Completed")
-    print("="*60)
-
-    print(df)
-
-    print("\nSummary saved to")
-
-    print(SUMMARY_FILE)
+# ==========================================================
+# RUN
+# ==========================================================
 
 if __name__ == "__main__":
+
     main()
