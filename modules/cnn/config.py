@@ -11,42 +11,24 @@ Model  : EfficientNet-B0
 from pathlib import Path
 import torch
 
+from modules.paths import (
+    BASE_DIR,
+    TRAIN_DIR,
+    VALIDATION_DIR,
+    TEST_DIR,
+    MODELS_DIR,
+    OUTPUT_DIR,
+)
+
 # =========================================================
 # PROJECT ROOT
 # =========================================================
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # =========================================================
 # DATASET PATHS
 # =========================================================
 
-COLAB_DATASET = Path("/content/drive/MyDrive/PhotoGuard/datasets")
 
-LOCAL_DATASET = BASE_DIR / "datasets"
-
-if COLAB_DATASET.exists():
-
-    DATASET_DIR = COLAB_DATASET
-
-else:
-
-    DATASET_DIR = LOCAL_DATASET
-
-
-TRAIN_DIR = DATASET_DIR / "train"
-
-VALIDATION_DIR = DATASET_DIR / "validation"
-
-TEST_DIR = DATASET_DIR / "test"
-
-# =========================================================
-# MODEL PATHS
-# =========================================================
-
-MODELS_DIR = BASE_DIR / "models"
-
-MODELS_DIR.mkdir(exist_ok=True)
 
 MODEL_NAME = "efficientnet_b0"
 
