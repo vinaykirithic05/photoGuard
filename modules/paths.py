@@ -7,7 +7,7 @@ Author : Vinay Kirithic
 
 Description:
 Centralizes all directory paths across local workspace and Google Colab environments.
-Automatically creates required directory trees if they do not exist.
+Supports fallback directory paths for Google Drive case-sensitivity.
 ============================================================
 """
 
@@ -21,14 +21,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ==========================================================
 # ENVIRONMENT & DATASET DIRECTORIES
 # ==========================================================
-COLAB_DATASET = Path("/content/drive/MyDrive/PhotoGuard/datasets")
+# Possible Google Drive dataset paths (handling case sensitivity and capitalization)
+COLAB_DATASET_PATHS = [
+    Path("/content/drive/MyDrive/PhotoGuard/datasets"),
+    Path("/content/drive/MyDrive/PhotoGuard/Datasets"),
+    Path("/content/drive/MyDrive/photoguard/datasets"),
+    Path("/content/drive/MyDrive/photoGuard/datasets"),
+]
+
 LOCAL_DATASET = BASE_DIR / "datasets"
 
 # Automatically resolve path depending on environment (Colab vs Local)
-DATASET_DIR = COLAB_DATASET if COLAB_DATASET.exists() else LOCAL_DATASET
+DATASET_DIR = LOCAL_DATASET
+for colab_path in COLAB_DATASET_PATHS:
+    if colab_path.exists():
+        DATASET_DIR = colab_path
+        break
 
 # Raw and preprocessed dataset folders
 RAW_DIR = DATASET_DIR / "raw"
+if not RAW_DIR.exists() and (DATASET_DIR / "Raw").exists():
+    RAW_DIR = DATASET_DIR / "Raw"
+
 PREPROCESSED_DIR = DATASET_DIR / "preprocessed"
 BALANCED_DIR = DATASET_DIR / "balanced"
 
