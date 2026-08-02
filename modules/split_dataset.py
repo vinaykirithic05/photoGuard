@@ -7,7 +7,8 @@ Author : Vinay Kirithic
 
 Description:
 Splits preprocessed images into Train (70%), Validation (15%), and Test (15%) sets.
-Supports optional class balancing (e.g., capping majority Real class at 12,000 to match AI class).
+Organizes output cleanly by top-level class folders ('real' vs 'ai').
+Supports class balancing (e.g., capping majority Real class at 12,000 to match AI class).
 ============================================================
 """
 
@@ -30,8 +31,7 @@ TRAIN_RATIO = 0.70
 VALIDATION_RATIO = 0.15
 TEST_RATIO = 0.15
 
-# Set MAX_SAMPLES_PER_CLASS to an integer (e.g., 12000) to balance dataset (12k AI vs 12k Real)
-# Set to None if using all available images without capping
+# Maximum samples per top-level class ('real' vs 'ai')
 MAX_SAMPLES_PER_CLASS = 12000  
 
 RANDOM_SEED = 42
@@ -57,18 +57,11 @@ class DatasetSplitter:
             split_dir.mkdir(parents=True, exist_ok=True)
         print("Previous dataset splits cleared. Fresh directories initialized.")
 
-    def get_class_folders(self):
-        """Retrieves subdirectories containing valid image files."""
-        folders = []
+    def get_top_level_classes(self):
+        """Retrieves top-level class directories ('real', 'ai')."""
         if not self.input_dir.exists():
-            return folders
-            
-        for folder in self.input_dir.rglob("*"):
-            if folder.is_dir():
-                images = [f for f in folder.iterdir() if f.suffix.lower() in SUPPORTED_EXTENSIONS]
-                if images:
-                    folders.append(folder)
-        return folders
+            return []
+        return [d for d in self.input_dir.iterdir() if d.is_dir()]
 
     def copy_files(self, files, destination_dir):
         """Copies list of image files to target directory."""
@@ -77,13 +70,13 @@ class DatasetSplitter:
             shutil.copy2(file, destination_dir / file.name)
 
     def split(self):
-        """Executes stratified train/validation/test split with balancing."""
+        """Executes stratified train/validation/test split with top-level class balancing."""
         if not self.input_dir.exists():
             print(f"Preprocessed dataset directory not found: {self.input_dir}")
             return
 
         self.clean_output_folders()
-        class_folders = self.get_class_folders()
+        top_classes = self.get_top_level_classes()
 
         print("\n" + "=" * 60)
         print("PhotoGuard AI - Dataset Splitting & Class Balancing")
@@ -91,15 +84,20 @@ class DatasetSplitter:
 
         total_train, total_val, total_test = 0, 0, 0
 
-        for folder in class_folders:
-            relative_folder = folder.relative_to(self.input_dir)
-            images = [f for f in folder.iterdir() if f.suffix.lower() in SUPPORTED_EXTENSIONS]
+        for class_dir in top_classes:
+            class_name = class_dir.name  # 'real' or 'ai'
+            
+            # Recursively collect all preprocessed images within this class (including subfolders like flicker/coco)
+            images = [
+                f for f in class_dir.rglob("*")
+                if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+            ]
 
             random.shuffle(images)
 
-            # Class balancing cap
+            # Apply top-level class balancing cap
             if self.max_samples_per_class and len(images) > self.max_samples_per_class:
-                print(f"Balancing Class [{relative_folder}]: Capped from {len(images)} -> {self.max_samples_per_class} images")
+                print(f"Balancing Top Class [{class_name}]: Capped from {len(images)} -> {self.max_samples_per_class} images")
                 images = images[:self.max_samples_per_class]
 
             total = len(images)
@@ -110,15 +108,16 @@ class DatasetSplitter:
             val_imgs = images[train_cnt : train_cnt + val_cnt]
             test_imgs = images[train_cnt + val_cnt :]
 
-            self.copy_files(train_imgs, TRAIN_DIR / relative_folder)
-            self.copy_files(val_imgs, VALIDATION_DIR / relative_folder)
-            self.copy_files(test_imgs, TEST_DIR / relative_folder)
+            # Copy to split directory flattened by top class name for PyTorch ImageFolder readiness
+            self.copy_files(train_imgs, TRAIN_DIR / class_name)
+            self.copy_files(val_imgs, VALIDATION_DIR / class_name)
+            self.copy_files(test_imgs, TEST_DIR / class_name)
 
             total_train += len(train_imgs)
             total_val += len(val_imgs)
             total_test += len(test_imgs)
 
-            print(f"  Folder [{relative_folder}] -> Total: {total} | Train: {len(train_imgs)} | Val: {len(val_imgs)} | Test: {len(test_imgs)}")
+            print(f"  Class [{class_name}] -> Total: {total} | Train: {len(train_imgs)} | Val: {len(val_imgs)} | Test: {len(test_imgs)}")
 
         print("\n" + "=" * 60)
         print("Dataset Split Completed Successfully!")
