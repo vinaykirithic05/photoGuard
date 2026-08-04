@@ -192,9 +192,7 @@ def validate_one_epoch(
 
              "Loss": f"{loss_meter.avg:.4f}",
 
-             "Accuracy": f"{accuracy_meter.avg*100:.2f}%",
-
-             "LR": optimizer.param_groups[0]["lr"]
+             "Accuracy": f"{accuracy_meter.avg*100:.2f}%"
 
             })
 
