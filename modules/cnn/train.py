@@ -64,18 +64,19 @@ from modules.cnn.trainer import (
 # PROJECT PATHS
 # =========================================================
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-WEIGHTS_DIR = BASE_DIR / "weights"
-
-CHECKPOINT_DIR = BASE_DIR / "checkpoints"
-
-HISTORY_DIR = BASE_DIR / "history"
+# Check if running on Google Colab
+COLAB_DRIVE_ROOT = Path("/content/drive/MyDrive/PhotoGuard")
+if COLAB_DRIVE_ROOT.exists():
+    WEIGHTS_DIR = COLAB_DRIVE_ROOT / "weights"
+    CHECKPOINT_DIR = COLAB_DRIVE_ROOT / "checkpoints"
+    HISTORY_DIR = COLAB_DRIVE_ROOT / "history"
+else:
+    WEIGHTS_DIR = BASE_DIR / "weights"
+    CHECKPOINT_DIR = BASE_DIR / "checkpoints"
+    HISTORY_DIR = BASE_DIR / "history"
 
 BEST_MODEL = WEIGHTS_DIR / "best_model.pth"
-
 LAST_CHECKPOINT = CHECKPOINT_DIR / "last_checkpoint.pth"
-
 HISTORY_FILE = HISTORY_DIR / "history.json"
 # =========================================================
 # CREATE PROJECT FOLDERS
