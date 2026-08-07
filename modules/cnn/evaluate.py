@@ -31,7 +31,6 @@ from sklearn.metrics import (
 
 from modules.cnn.config import (
     DEVICE,
-    CLASS_NAMES,
 )
 from modules.cnn.model import build_model
 from modules.paths import MODELS_DIR, TEST_DIR, OUTPUT_DIR
@@ -64,7 +63,13 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     # Import CNN dataloader
     from modules.cnn.dataset import get_dataloaders
     _, _, test_loader = get_dataloaders()
-    print(f"Test Batches: {len(test_loader)}")
+    
+    # Extract ground truth class mapping from Dataset (e.g. {'ai': 0, 'real': 1})
+    class_to_idx = test_loader.dataset.class_to_idx
+    idx_to_class = {v: k for k, v in class_to_idx.items()}
+    class_names = [idx_to_class[i] for i in sorted(idx_to_class.keys())]
+
+    print(f"Test Batches: {len(test_loader)} | Dynamically Inferred Classes: {class_names}")
 
     # Load Trained Model
     model = build_model()
@@ -92,7 +97,8 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
 
             all_preds.extend(preds.cpu().numpy())
             all_targets.extend(labels.numpy())
-            all_probs.extend(probs[:, 1].cpu().numpy())  # Probability for Class 'Real'
+            # For 2-class classification, pass probabilities of positive class (index 1)
+            all_probs.extend(probs[:, 1].cpu().numpy())
 
     all_preds = np.array(all_preds)
     all_targets = np.array(all_targets)
@@ -119,13 +125,18 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     print(f"ROC-AUC   : {auc:.4f}")
     print("=" * 70)
 
+    # Print Detailed Classification Report
+    print("\nDetailed Classification Report:")
+    print(classification_report(all_targets, all_preds, target_names=class_names, zero_division=0))
+
     # Save metrics JSON safely
     metrics = {
-        "accuracy": acc,
-        "precision": prec,
-        "recall": rec,
-        "f1_score": f1,
-        "roc_auc": auc
+        "accuracy": float(acc),
+        "precision": float(prec),
+        "recall": float(rec),
+        "f1_score": float(f1),
+        "roc_auc": float(auc),
+        "class_mapping": class_to_idx
     }
     METRICS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     metrics_file_path = METRICS_OUTPUT_DIR / "test_evaluation_metrics.json"
@@ -136,7 +147,7 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     # Plot Confusion Matrix safely
     cm = confusion_matrix(all_targets, all_preds)
     plt.figure(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=CLASS_NAMES, yticklabels=CLASS_NAMES)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=class_names, yticklabels=class_names)
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.title("PhotoGuard AI - Confusion Matrix")
