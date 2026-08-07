@@ -63,7 +63,7 @@ def verify_dataset():
 
             )
 
-    print("✓ Dataset Verified Successfully\n")
+    print("[OK] Dataset Verified Successfully\n")
 
 
 # =========================================================

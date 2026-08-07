@@ -36,15 +36,18 @@ from modules.cnn.config import (
 from modules.cnn.model import build_model
 from modules.paths import MODELS_DIR, TEST_DIR, OUTPUT_DIR
 
+# Base project directory
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 # Check if running on Google Colab to persist metrics & plots directly to Google Drive
 COLAB_DRIVE_ROOT = Path("/content/drive/MyDrive/PhotoGuard")
 if COLAB_DRIVE_ROOT.exists():
     BEST_MODEL_PATH = COLAB_DRIVE_ROOT / "weights" / "best_model.pth"
     METRICS_OUTPUT_DIR = COLAB_DRIVE_ROOT / "outputs" / "metrics"
 else:
-    BEST_MODEL_PATH = MODELS_DIR / "best_model.pth"
+    BEST_MODEL_PATH = BASE_DIR / "weights" / "best_model.pth"
     if not BEST_MODEL_PATH.exists():
-        BEST_MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "weights" / "best_model.pth"
+        BEST_MODEL_PATH = MODELS_DIR / "best_model.pth"
     METRICS_OUTPUT_DIR = OUTPUT_DIR / "metrics"
 
 
@@ -52,6 +55,7 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     print("\n" + "=" * 70)
     print("           PhotoGuard AI - Model Evaluation Engine")
     print("=" * 70)
+    print(f"Loading Model Weights from: {model_path}")
 
     if not model_path.exists():
         print(f"Error: Model weights file not found at {model_path}")
@@ -67,6 +71,8 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     checkpoint = torch.load(model_path, map_location=DEVICE)
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])
+    elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["state_dict"])
     else:
         model.load_state_dict(checkpoint)
 
@@ -125,7 +131,7 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     metrics_file_path = METRICS_OUTPUT_DIR / "test_evaluation_metrics.json"
     with open(metrics_file_path, "w") as f:
         json.dump(metrics, f, indent=4)
-    print(f"\n✓ Metrics JSON saved to: {metrics_file_path}")
+    print(f"\n[OK] Metrics JSON saved to: {metrics_file_path}")
 
     # Plot Confusion Matrix safely
     cm = confusion_matrix(all_targets, all_preds)
@@ -138,7 +144,7 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     cm_path = METRICS_OUTPUT_DIR / "confusion_matrix.png"
     plt.savefig(cm_path)
     plt.close()
-    print(f"✓ Confusion Matrix plot saved to: {cm_path}\n")
+    print(f"[OK] Confusion Matrix plot saved to: {cm_path}\n")
 
 if __name__ == "__main__":
     evaluate_model()
