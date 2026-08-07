@@ -9,6 +9,7 @@ Description:
 Evaluates trained PhotoGuard CNN model on the test dataset.
 Calculates Accuracy, Precision, Recall, F1-Score, Confusion Matrix,
 and saves metrics summary to output directory.
+Supports Google Colab Google Drive output persistence.
 =========================================================
 """
 
@@ -31,16 +32,20 @@ from sklearn.metrics import (
 from modules.cnn.config import (
     DEVICE,
     CLASS_NAMES,
-    METRICS_DIR,
 )
 from modules.cnn.model import build_model
-from modules.paths import MODELS_DIR, TEST_DIR
-from modules.dataloader import create_dataloaders
+from modules.paths import MODELS_DIR, TEST_DIR, OUTPUT_DIR
 
-# Target Model Weights
-BEST_MODEL_PATH = MODELS_DIR / "best_model.pth"
-if not BEST_MODEL_PATH.exists():
-    BEST_MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "weights" / "best_model.pth"
+# Check if running on Google Colab to persist metrics & plots directly to Google Drive
+COLAB_DRIVE_ROOT = Path("/content/drive/MyDrive/PhotoGuard")
+if COLAB_DRIVE_ROOT.exists():
+    BEST_MODEL_PATH = COLAB_DRIVE_ROOT / "weights" / "best_model.pth"
+    METRICS_OUTPUT_DIR = COLAB_DRIVE_ROOT / "outputs" / "metrics"
+else:
+    BEST_MODEL_PATH = MODELS_DIR / "best_model.pth"
+    if not BEST_MODEL_PATH.exists():
+        BEST_MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "weights" / "best_model.pth"
+    METRICS_OUTPUT_DIR = OUTPUT_DIR / "metrics"
 
 
 def evaluate_model(model_path: Path = BEST_MODEL_PATH):
@@ -52,9 +57,10 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
         print(f"Error: Model weights file not found at {model_path}")
         return
 
-    # Load DataLoaders
-    _, _, test_loader, class_map = create_dataloaders()
-    print(f"Test Batches: {len(test_loader)} | Class Map: {class_map}")
+    # Import CNN dataloader
+    from modules.cnn.dataset import get_dataloaders
+    _, _, test_loader = get_dataloaders()
+    print(f"Test Batches: {len(test_loader)}")
 
     # Load Trained Model
     model = build_model()
@@ -80,7 +86,7 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
 
             all_preds.extend(preds.cpu().numpy())
             all_targets.extend(labels.numpy())
-            all_probs.extend(probs[:, 1].cpu().numpy())  # Probability for Class 'Real' or positive class
+            all_probs.extend(probs[:, 1].cpu().numpy())  # Probability for Class 'Real'
 
     all_preds = np.array(all_preds)
     all_targets = np.array(all_targets)
@@ -107,7 +113,7 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     print(f"ROC-AUC   : {auc:.4f}")
     print("=" * 70)
 
-    # Save metrics JSON
+    # Save metrics JSON safely
     metrics = {
         "accuracy": acc,
         "precision": prec,
@@ -115,11 +121,13 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
         "f1_score": f1,
         "roc_auc": auc
     }
-    METRICS_DIR.mkdir(parents=True, exist_ok=True)
-    with open(METRICS_DIR / "test_evaluation_metrics.json", "w") as f:
+    METRICS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    metrics_file_path = METRICS_OUTPUT_DIR / "test_evaluation_metrics.json"
+    with open(metrics_file_path, "w") as f:
         json.dump(metrics, f, indent=4)
+    print(f"\n✓ Metrics JSON saved to: {metrics_file_path}")
 
-    # Plot Confusion Matrix
+    # Plot Confusion Matrix safely
     cm = confusion_matrix(all_targets, all_preds)
     plt.figure(figsize=(6, 5))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=CLASS_NAMES, yticklabels=CLASS_NAMES)
@@ -127,10 +135,10 @@ def evaluate_model(model_path: Path = BEST_MODEL_PATH):
     plt.ylabel("True Label")
     plt.title("PhotoGuard AI - Confusion Matrix")
     plt.tight_layout()
-    cm_path = METRICS_DIR / "confusion_matrix.png"
+    cm_path = METRICS_OUTPUT_DIR / "confusion_matrix.png"
     plt.savefig(cm_path)
     plt.close()
-    print(f"Confusion Matrix plot saved to: {cm_path}\n")
+    print(f"✓ Confusion Matrix plot saved to: {cm_path}\n")
 
 if __name__ == "__main__":
     evaluate_model()
