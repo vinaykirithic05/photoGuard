@@ -64,6 +64,8 @@ from modules.cnn.trainer import (
 # PROJECT PATHS
 # =========================================================
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 # Check if running on Google Colab
 COLAB_DRIVE_ROOT = Path("/content/drive/MyDrive/PhotoGuard")
 if COLAB_DRIVE_ROOT.exists():
