@@ -19,5 +19,8 @@ outputs/
 # Environment variables
 .env
 
+# Checkpoints
+checkpoints/
+
 # Jupyter checkpoints
 .ipynb_checkpoints/
