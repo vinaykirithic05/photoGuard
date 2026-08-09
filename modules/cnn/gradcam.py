@@ -8,6 +8,7 @@ Author : Vinay Kirithic
 Description:
 Generates Gradient-weighted Class Activation Mapping (Grad-CAM) heatmaps
 for PhotoGuard CNN predictions, visualizing high-impact pixel regions.
+Automatically scans sample test images and generates explainability heatmaps.
 =========================================================
 """
 
@@ -22,11 +23,21 @@ from torchvision import transforms
 
 from modules.cnn.config import DEVICE, IMAGE_SIZE, GRADCAM_DIR
 from modules.cnn.model import build_model
-from modules.paths import MODELS_DIR
+from modules.paths import MODELS_DIR, TEST_DIR, OUTPUT_DIR
 
-BEST_MODEL_PATH = MODELS_DIR / "best_model.pth"
-if not BEST_MODEL_PATH.exists():
-    BEST_MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "weights" / "best_model.pth"
+# Base project directory
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Check if running on Google Colab to persist outputs directly to Google Drive
+COLAB_DRIVE_ROOT = Path("/content/drive/MyDrive/PhotoGuard")
+if COLAB_DRIVE_ROOT.exists():
+    BEST_MODEL_PATH = COLAB_DRIVE_ROOT / "weights" / "best_model.pth"
+    OUTPUT_GRADCAM_DIR = COLAB_DRIVE_ROOT / "outputs" / "gradcam"
+else:
+    BEST_MODEL_PATH = BASE_DIR / "weights" / "best_model.pth"
+    if not BEST_MODEL_PATH.exists():
+        BEST_MODEL_PATH = MODELS_DIR / "best_model.pth"
+    OUTPUT_GRADCAM_DIR = OUTPUT_DIR / "gradcam"
 
 
 class GradCAM:
@@ -80,6 +91,8 @@ def generate_gradcam_overlay(image_path: Path, output_filename: str = "gradcam_o
         checkpoint = torch.load(BEST_MODEL_PATH, map_location=DEVICE)
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             model.load_state_dict(checkpoint["model_state_dict"])
+        elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+            model.load_state_dict(checkpoint["state_dict"])
         else:
             model.load_state_dict(checkpoint)
 
@@ -102,12 +115,44 @@ def generate_gradcam_overlay(image_path: Path, output_filename: str = "gradcam_o
     heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
     overlay = cv2.addWeighted(np_img, 0.6, heatmap_colored, 0.4, 0)
 
-    GRADCAM_DIR.mkdir(parents=True, exist_ok=True)
-    save_path = GRADCAM_DIR / output_filename
+    OUTPUT_GRADCAM_DIR.mkdir(parents=True, exist_ok=True)
+    save_path = OUTPUT_GRADCAM_DIR / output_filename
     Image.fromarray(overlay).save(save_path)
-    print(f"Grad-CAM overlay saved to: {save_path}")
+    print(f"[OK] Grad-CAM overlay saved to: {save_path}")
     return str(save_path)
 
 
+def run_batch_gradcam():
+    print("\n" + "=" * 70)
+    print("        PhotoGuard AI - Grad-CAM Visual Explainability Engine")
+    print("=" * 70)
+
+    # Find sample images in test set
+    test_ai_dir = TEST_DIR / "ai"
+    test_real_dir = TEST_DIR / "real"
+
+    sample_images = []
+    if test_ai_dir.exists():
+        ai_files = list(test_ai_dir.glob("*"))
+        if ai_files:
+            sample_images.append((ai_files[0], "gradcam_ai_sample.jpg"))
+    if test_real_dir.exists():
+        real_files = list(test_real_dir.glob("*"))
+        if real_files:
+            sample_images.append((real_files[0], "gradcam_real_sample.jpg"))
+
+    if not sample_images:
+        print("No test images found to generate Grad-CAM heatmaps.")
+        return
+
+    for img_path, out_name in sample_images:
+        generate_gradcam_overlay(img_path, out_name)
+
+    print("\n" + "=" * 70)
+    print("Grad-CAM Generation Complete!")
+    print(f"Heatmap outputs saved in: {OUTPUT_GRADCAM_DIR}")
+    print("=" * 70 + "\n")
+
+
 if __name__ == "__main__":
-    print("Grad-CAM Module initialized.")
+    run_batch_gradcam()
