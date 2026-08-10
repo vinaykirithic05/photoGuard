@@ -145,12 +145,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 border: Border.all(
                   color: _predictionResult == null
                       ? Colors.white12
-                      : (isAi ? Colors.redAccent : Colors.emerald),
+                      : (isAi ? Colors.redAccent : const Color(0xFF10B981)),
                   width: 2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 15,
                     offset: const Offset(0, 5),
                   )
@@ -266,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Icon(
                                 isAi ? Icons.warning_amber_rounded : Icons.verified_user,
-                                color: isAi ? Colors.redAccent : Colors.emerald,
+                                color: isAi ? Colors.redAccent : const Color(0xFF10B981),
                                 size: 32,
                               ),
                               const SizedBox(width: 12),
@@ -275,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 style: GoogleFonts.outfit(
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
-                                  color: isAi ? Colors.redAccent : Colors.emerald,
+                                  color: isAi ? Colors.redAccent : const Color(0xFF10B981),
                                 ),
                               ),
                             ],
@@ -287,14 +287,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: isAi
-                                  ? Colors.redAccent.withOpacity(0.2)
-                                  : Colors.emerald.withOpacity(0.2),
+                                  ? Colors.redAccent.withValues(alpha: 0.2)
+                                  : const Color(0xFF10B981).withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
                               "${_predictionResult!['confidence']}% Confident",
                               style: TextStyle(
-                                color: isAi ? Colors.redAccent : Colors.emerald,
+                                color: isAi ? Colors.redAccent : const Color(0xFF10B981),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -313,7 +313,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           _buildProbIndicator(
                             "Real Probability",
                             "${_predictionResult!['probabilities']?['Real'] ?? _predictionResult!['probabilities']?['real'] ?? 0}%",
-                            Colors.emerald,
+                            const Color(0xFF10B981),
                           ),
                         ],
                       ),
