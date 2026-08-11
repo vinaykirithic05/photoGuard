@@ -66,7 +66,12 @@ async def predict_photo(file: UploadFile = File(...)):
     - Class probability scores
     - Grad-CAM heatmap base64 string
     """
-    if not file.content_type.startswith("image/"):
+    # Check image extension or content type
+    ext = Path(file.filename).suffix.lower()
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+    is_image_type = file.content_type and file.content_type.startswith("image/")
+    
+    if not (is_image_type or ext in valid_exts):
         raise HTTPException(status_code=400, detail="File must be an image (.jpg, .jpeg, .png, .webp)")
 
     # Save uploaded file temporarily inside outputs/temp
