@@ -41,20 +41,23 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  File? _selectedImage;
+  Uint8List? _selectedImageBytes;
+  String? _selectedImageName;
   bool _isLoading = false;
   Map<String, dynamic>? _predictionResult;
   Uint8List? _gradcamBytes;
   final ImagePicker _picker = ImagePicker();
 
   // Change this to your server IP if testing on a physical mobile device (e.g. http://192.168.1.X:8000)
-  final String _apiUrl = "http://10.0.2.2:8000/api/v1/predict";
+  final String _apiUrl = "http://127.0.0.1:8000/api/v1/predict";
 
   Future<void> _pickImage(ImageSource source) async {
     final XFile? pickedFile = await _picker.pickImage(source: source);
     if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
       setState(() {
-        _selectedImage = File(pickedFile.path);
+        _selectedImageBytes = bytes;
+        _selectedImageName = pickedFile.name;
         _predictionResult = null;
         _gradcamBytes = null;
       });
@@ -63,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _analyzePhoto() async {
-    if (_selectedImage == null) return;
+    if (_selectedImageBytes == null) return;
 
     setState(() {
       _isLoading = true;
@@ -72,7 +75,11 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       var request = http.MultipartRequest('POST', Uri.parse(_apiUrl));
       request.files.add(
-        await http.MultipartFile.fromPath('file', _selectedImage!.path),
+        http.MultipartFile.fromBytes(
+          'file',
+          _selectedImageBytes!,
+          filename: _selectedImageName ?? 'uploaded_photo.jpg',
+        ),
       );
 
       var streamedResponse = await request.send();
@@ -158,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
-                child: _selectedImage == null
+                child: _selectedImageBytes == null
                     ? Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -180,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     : Stack(
                         fit: StackFit.expand,
                         children: [
-                          Image.file(_selectedImage!, fit: BoxFit.cover),
+                          Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
                           if (_isLoading)
                             Container(
                               color: Colors.black54,
