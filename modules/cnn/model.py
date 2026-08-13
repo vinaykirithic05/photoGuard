@@ -1,128 +1,112 @@
 """
 =========================================================
 PhotoGuard AI
-CNN Model Architecture Module
+Dual-Stream Universal AI Image Detector Model
 
 Author : Vinay Kirithic
 
 Description:
-Builds CNN models (EfficientNet-B0 default, ResNet50, or
-ConvNeXt-Tiny options) for AI Image vs Real Image Detection.
-Features flexible feature head unfreezing and custom classification head.
+PyTorch Neural Network architecture featuring a Dual-Stream design:
+1. Spatial Stream: EfficientNet-B0 backbone for visual macro-features.
+2. Noise/Frequency Stream: SRM High-Pass Filters + FFT Spectrum + Conv Layers
+   for camera sensor noise (PRNU) and AI latent grid detection.
 =========================================================
 """
 
 import torch
 import torch.nn as nn
-from torchvision.models import (
-    efficientnet_b0, EfficientNet_B0_Weights,
-    resnet50, ResNet50_Weights,
-    convnext_tiny, ConvNeXt_Tiny_Weights
-)
-
-from modules.cnn.config import (
-    DEVICE,
-    NUM_CLASSES,
-    DROPOUT,
-    MODEL_NAME,
-)
-
-# =========================================================
-# CNN MODEL CLASS
-# =========================================================
-
-class PhotoGuardCNN(nn.Module):
-
-    def __init__(self, model_name: str = MODEL_NAME, pretrained: bool = True, freeze_backbone: bool = False):
-        super().__init__()
-        self.model_name = model_name.lower()
-
-        if "efficientnet" in self.model_name:
-            weights = EfficientNet_B0_Weights.DEFAULT if pretrained else None
-            self.backbone = efficientnet_b0(weights=weights)
-            in_features = self.backbone.classifier[1].in_features
-
-            if freeze_backbone:
-                for param in self.backbone.features.parameters():
-                    param.requires_grad = False
-
-            # Custom Classification Head
-            self.backbone.classifier = nn.Sequential(
-                nn.Dropout(p=DROPOUT),
-                nn.Linear(in_features, 256),
-                nn.BatchNorm1d(256),
-                nn.ReLU(inplace=True),
-                nn.Dropout(p=DROPOUT / 2),
-                nn.Linear(256, NUM_CLASSES)
-            )
-
-        elif "resnet" in self.model_name:
-            weights = ResNet50_Weights.DEFAULT if pretrained else None
-            self.backbone = resnet50(weights=weights)
-            in_features = self.backbone.fc.in_features
-
-            if freeze_backbone:
-                for param in self.backbone.parameters():
-                    param.requires_grad = False
-
-            self.backbone.fc = nn.Sequential(
-                nn.Dropout(p=DROPOUT),
-                nn.Linear(in_features, 256),
-                nn.BatchNorm1d(256),
-                nn.ReLU(inplace=True),
-                nn.Dropout(p=DROPOUT / 2),
-                nn.Linear(256, NUM_CLASSES)
-            )
-
-        elif "convnext" in self.model_name:
-            weights = ConvNeXt_Tiny_Weights.DEFAULT if pretrained else None
-            self.backbone = convnext_tiny(weights=weights)
-            in_features = self.backbone.classifier[2].in_features
-
-            if freeze_backbone:
-                for param in self.backbone.features.parameters():
-                    param.requires_grad = False
-
-            self.backbone.classifier[2] = nn.Sequential(
-                nn.Dropout(p=DROPOUT),
-                nn.Linear(in_features, NUM_CLASSES)
-            )
-
-        else:
-            raise ValueError(f"Unsupported backbone model: {model_name}")
-
-    def forward(self, x):
-        return self.backbone(x)
+import torch.nn.functional as F
+from torchvision import models
+from modules.filters import SRMFilterLayer, FFTSpectrumExtractor
 
 
-# =========================================================
-# BUILD MODEL HELPER
-# =========================================================
+class PhotoGuardDualStreamNet(nn.Module):
+    """
+    Dual-Stream Neural Network for Universal AI Detection.
+    - Stream A (Spatial): Extracts RGB visual features.
+    - Stream B (Noise & Frequency): Extracts SRM High-Pass Residuals & FFT Spectrum.
+    - Attention Fusion Layer: Merges spatial and spectral representations.
+    """
+    def __init__(self, num_classes: int = 2, dropout_rate: float = 0.3):
+        super(PhotoGuardDualStreamNet, self).__init__()
+        
+        # --- STREAM A: SPATIAL RGB BRANCH (EfficientNet-B0) ---
+        spatial_backbone = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+        self.spatial_features = spatial_backbone.features
+        self.spatial_pool = nn.AdaptiveAvgPool2d((1, 1))
+        spatial_dim = spatial_backbone.classifier[1].in_features  # 1280
+        
+        # --- STREAM B: NOISE & FREQUENCY BRANCH ---
+        self.srm_layer = SRMFilterLayer()
+        self.fft_layer = FFTSpectrumExtractor()
+        
+        # Input to Noise Stream: 3 SRM channels + 1 FFT Channel = 4 channels
+        self.noise_conv = nn.Sequential(
+            nn.Conv2d(4, 32, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+        noise_dim = 128
+        
+        # --- FUSION & CLASSIFICATION HEAD ---
+        combined_dim = spatial_dim + noise_dim  # 1280 + 128 = 1408
+        
+        # Attention Gate for Channel-wise Feature Weighting
+        self.attention = nn.Sequential(
+            nn.Linear(combined_dim, combined_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(combined_dim // 2, combined_dim),
+            nn.Sigmoid()
+        )
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(combined_dim, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout_rate),
+            nn.Linear(256, num_classes)
+        )
 
-def build_model(model_name: str = MODEL_NAME, freeze_backbone: bool = False):
-    model = PhotoGuardCNN(model_name=model_name, freeze_backbone=freeze_backbone)
-    model = model.to(DEVICE)
-    return model
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Input x: (B, 3, H, W) RGB Image
+        Output: (B, 2) Logits [AI, Real]
+        """
+        # 1. Spatial Stream Processing
+        spatial_feat = self.spatial_features(x)
+        spatial_vec = torch.flatten(self.spatial_pool(spatial_feat), 1)
+        
+        # 2. Noise & Frequency Stream Processing
+        srm_feat = self.srm_layer(x)          # (B, 3, H, W)
+        fft_feat = self.fft_layer(x)          # (B, 1, H, W)
+        noise_input = torch.cat([srm_feat, fft_feat], dim=1) # (B, 4, H, W)
+        
+        noise_vec = torch.flatten(self.noise_conv(noise_input), 1) # (B, 128)
+        
+        # 3. Feature Fusion & Attention
+        fused_vec = torch.cat([spatial_vec, noise_vec], dim=1) # (B, 1408)
+        attn_weights = self.attention(fused_vec)
+        weighted_fused_vec = fused_vec * attn_weights
+        
+        # 4. Classification
+        logits = self.classifier(weighted_fused_vec)
+        return logits
 
 
-# =========================================================
-# MODEL SUMMARY
-# =========================================================
-
-def model_summary(model):
-    print("\n" + "=" * 70)
-    print(f"PhotoGuard AI - CNN Architecture ({model.model_name.upper()})")
-    print("=" * 70)
-
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-    print(f"Total Parameters      : {total_params:,}")
-    print(f"Trainable Parameters  : {trainable_params:,}")
-    print(f"Device Target         : {DEVICE}")
-    print("=" * 70 + "\n")
+# Wrapper function for backward compatibility
+def get_model(num_classes: int = 2, dropout_rate: float = 0.3) -> nn.Module:
+    return PhotoGuardDualStreamNet(num_classes=num_classes, dropout_rate=dropout_rate)
 
 
-if __name__ == "__main__":
-    model = build_model()
-    model_summary(model)
+def build_model(num_classes: int = 2, dropout_rate: float = 0.3) -> nn.Module:
+    return PhotoGuardDualStreamNet(num_classes=num_classes, dropout_rate=dropout_rate)

@@ -186,27 +186,22 @@ def load_checkpoint(model, optimizer):
 
         )
 
-        model.load_state_dict(
-
-            checkpoint["model_state_dict"]
-
-        )
-
-        optimizer.load_state_dict(
-
-            checkpoint["optimizer_state_dict"]
-
-        )
-
-        start_epoch = checkpoint["epoch"] + 1
-
-        best_accuracy = checkpoint["best_accuracy"]
-
-        print(
-
-            f"Resuming From Epoch {start_epoch}"
-
-        )
+        try:
+            model.load_state_dict(
+                checkpoint["model_state_dict"]
+            )
+            optimizer.load_state_dict(
+                checkpoint["optimizer_state_dict"]
+            )
+            start_epoch = checkpoint["epoch"] + 1
+            best_accuracy = checkpoint["best_accuracy"]
+            print(
+                f"Resuming From Epoch {start_epoch}"
+            )
+        except Exception as e:
+            print("\n[NOTE] Previous checkpoint architecture differs from Dual-Stream model. Starting fresh training.\n")
+            start_epoch = 1
+            best_accuracy = 0.0
 
     return (
 

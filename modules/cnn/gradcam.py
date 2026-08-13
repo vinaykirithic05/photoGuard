@@ -13,12 +13,15 @@ Automatically scans sample test images and generates explainability heatmaps.
 """
 
 from pathlib import Path
+# pyrefly: ignore [missing-import]
 import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+# pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 from PIL import Image
+# pyrefly: ignore [missing-import]
 from torchvision import transforms
 
 from modules.cnn.config import DEVICE, IMAGE_SIZE, GRADCAM_DIR
@@ -96,8 +99,8 @@ def generate_gradcam_overlay(image_path: Path, output_filename: str = "gradcam_o
         else:
             model.load_state_dict(checkpoint)
 
-    # Get last convolutional layer of EfficientNet backbone
-    target_layer = model.backbone.features[-1]
+    # Get last convolutional layer of spatial features backbone
+    target_layer = model.spatial_features[-1]
     gradcam = GradCAM(model, target_layer)
 
     orig_img = Image.open(image_path).convert("RGB").resize((IMAGE_SIZE, IMAGE_SIZE))
